@@ -1,0 +1,3 @@
+"""
+Jesi - FastAPI Application
+""" 

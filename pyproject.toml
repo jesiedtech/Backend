@@ -1,0 +1,12 @@
+[build-system]
+requires = ["setuptools>=42", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "jesi"
+version = "1.0.0"
+description = "FastAPI application with user authentication and email verification"
+requires-python = ">=3.8"
+
+[tool.setuptools]
+packages = ["app"] 
