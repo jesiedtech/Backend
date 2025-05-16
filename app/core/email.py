@@ -9,8 +9,70 @@ import asyncio
 from functools import partial
 import aiosmtplib
 import os
+from fastapi import BackgroundTasks
+from fastapi_mail import FastMail, MessageSchema, ConnectionConfig
+from dotenv import load_dotenv
+from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+# Load environment variables
+load_dotenv()
+
+class Envs:
+    MAIL_USERNAME = os.getenv('SMTP_USER')
+    MAIL_PASSWORD = os.getenv('SMTP_PASSWORD')
+    MAIL_FROM = os.getenv('EMAILS_FROM_EMAIL')
+    MAIL_PORT = int(os.getenv('SMTP_PORT', '25'))
+    MAIL_SERVER = os.getenv('SMTP_HOST')
+    MAIL_FROM_NAME = os.getenv('EMAILS_FROM_NAME')
+
+# Email configuration
+conf = ConnectionConfig(
+    MAIL_USERNAME=Envs.MAIL_USERNAME,
+    MAIL_PASSWORD=Envs.MAIL_PASSWORD,
+    MAIL_FROM=Envs.MAIL_FROM,
+    MAIL_PORT=Envs.MAIL_PORT,
+    MAIL_SERVER=Envs.MAIL_SERVER,
+    MAIL_FROM_NAME=Envs.MAIL_FROM_NAME,
+    MAIL_STARTTLS=True,
+    MAIL_SSL_TLS=False,
+    USE_CREDENTIALS=True,
+    VALIDATE_CERTS=True,
+    TEMPLATE_FOLDER=Path(__file__).parent.parent / 'templates' / 'email'
+)
+
+async def test_smtp_connection():
+    """Test SMTP connection and authentication."""
+    try:
+        logger.info(f"Testing SMTP connection to {Envs.MAIL_SERVER}:{Envs.MAIL_PORT}")
+        logger.info(f"Using username: {Envs.MAIL_USERNAME}")
+        
+        # Create SMTP connection
+        smtp = aiosmtplib.SMTP(
+            hostname=Envs.MAIL_SERVER,
+            port=Envs.MAIL_PORT,
+            use_tls=True,
+            username=Envs.MAIL_USERNAME,
+            password=Envs.MAIL_PASSWORD
+        )
+        
+        # Connect and authenticate
+        await smtp.connect()
+        logger.info("SMTP connection established")
+        
+        # Test authentication
+        await smtp.login(Envs.MAIL_USERNAME, Envs.MAIL_PASSWORD)
+        logger.info("SMTP authentication successful")
+        
+        # Close connection
+        await smtp.quit()
+        logger.info("SMTP connection test completed successfully")
+        return True
+        
+    except Exception as e:
+        logger.error(f"SMTP connection test failed: {str(e)}")
+        return False
 
 def create_verification_email(to_email: str, token: str) -> MIMEMultipart:
     """Create a verification email."""
@@ -271,4 +333,51 @@ async def send_password_reset_email(to_email: str, token: str) -> None:
         logger.info(f"Password reset email sent successfully to {to_email}")
     except Exception as e:
         logger.error(f"Failed to send password reset email: {str(e)}")
+        raise
+
+async def send_email_async(subject: str, email_to: str, body: dict):
+    """
+    Send an email asynchronously.
+    
+    Args:
+        subject: Email subject
+        email_to: Recipient email address
+        body: Dictionary containing email template variables
+    """
+    try:
+        message = MessageSchema(
+            subject=subject,
+            recipients=[email_to],
+            body=body,
+            subtype='html',
+        )
+        
+        fm = FastMail(conf)
+        await fm.send_message(message, template_name='email.html')
+    except Exception as e:
+        print(f"Error sending email: {str(e)}")
+        raise
+
+def send_email_background(background_tasks: BackgroundTasks, subject: str, email_to: str, body: dict):
+    """
+    Send an email in the background using FastAPI background tasks.
+    
+    Args:
+        background_tasks: FastAPI background tasks
+        subject: Email subject
+        email_to: Recipient email address
+        body: Dictionary containing email template variables
+    """
+    try:
+        message = MessageSchema(
+            subject=subject,
+            recipients=[email_to],
+            body=body,
+            subtype='html',
+        )
+        fm = FastMail(conf)
+        background_tasks.add_task(
+            fm.send_message, message, template_name='email.html')
+    except Exception as e:
+        print(f"Error sending email: {str(e)}")
         raise 
