@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Background
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.core.security import get_password_hash, verify_password, create_access_token, generate_verification_token
-from app.core.email import send_verification_email, send_password_reset_email, send_email_background, send_email_async, test_smtp_connection
+from app.core.email import send_verification_email, send_password_reset_email, send_email_background, send_email_async
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserLogin, Token, UserVerify, PasswordReset, PasswordResetConfirm, UserResponse
+from app.schemas.user import UserCreate, UserLogin, Token, UserVerify, PasswordReset, PasswordResetConfirm, UserResponse, RoleAssignment
 from datetime import timedelta, datetime
 from app.core.config import settings
 import uuid
@@ -103,7 +103,7 @@ async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
                 detail="Email already registered"
             )
         
-        # Create new user
+        # Create new user with default role
         try:
             new_user = await User.create(
                 db=db,
@@ -111,7 +111,7 @@ async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
                 first_name=user.first_name,
                 surname=user.surname,
                 password=user.password,
-                role=user.role
+                role='user'  # Set default role
             )
             logger.info(f"User created successfully with ID: {new_user.id}")
         except Exception as create_error:
@@ -361,21 +361,45 @@ async def logout(
             detail="An error occurred during logout"
         )
 
-@router.get("/test-smtp")
-async def test_smtp():
-    """Test SMTP connection."""
+@router.post("/assign-role", response_model=UserResponse)
+async def assign_role(
+    role_data: RoleAssignment,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Assign a role to a user. Only admin users can assign roles."""
     try:
-        result = await test_smtp_connection()
-        if result:
-            return {"message": "SMTP connection test successful"}
-        else:
+        # Check if current user is admin
+        if current_user.role != 'admin':
             raise HTTPException(
-                status_code=500,
-                detail="SMTP connection test failed"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admin users can assign roles"
             )
+        
+        # Get target user
+        target_user = await User.get_by_id(db, role_data.user_id)
+        if not target_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Update user role
+        target_user.role = role_data.role
+        await target_user.save(db)
+        
+        return UserResponse(
+            id=target_user.id,
+            email=target_user.email,
+            first_name=target_user.first_name,
+            surname=target_user.surname,
+            role=target_user.role,
+            is_verified=target_user.is_verified,
+            is_active=target_user.is_active
+        )
     except Exception as e:
-        logger.error(f"SMTP test failed: {str(e)}")
+        logger.error(f"Error assigning role: {str(e)}")
         raise HTTPException(
-            status_code=500,
-            detail=f"SMTP test failed: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to assign role"
         ) 

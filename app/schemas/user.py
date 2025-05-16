@@ -8,7 +8,7 @@ class UserBase(BaseModel):
     email: EmailStr
     first_name: str
     surname: str
-    role: str = 'user'
+    role: Optional[str] = None
 
 class UserCreate(UserBase):
     password: constr(min_length=8)
@@ -71,4 +71,8 @@ class User(UserBase):
         from_attributes = True
         json_encoders = {
             UUID: str
-        } 
+        }
+
+class RoleAssignment(BaseModel):
+    user_id: UUID
+    role: str 

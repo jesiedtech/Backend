@@ -201,7 +201,7 @@ class User:
             raise
 
     @classmethod
-    async def get_by_id(cls, db: asyncpg.Connection, user_id: UUID) -> Optional['User']:
+    async def get_by_id(cls, db: asyncpg.Connection, user_id: str) -> Optional['User']:
         """Get a user by ID."""
         try:
             query = """
