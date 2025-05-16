@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.core.security import get_password_hash, verify_password, create_access_token, generate_verification_token
-from app.core.email import send_verification_email, send_password_reset_email
+from app.core.email import send_verification_email, send_password_reset_email, send_email_background, send_email_async, test_smtp_connection
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.user import UserCreate, UserLogin, Token, UserVerify, PasswordReset, PasswordResetConfirm, UserResponse
@@ -359,4 +359,23 @@ async def logout(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="An error occurred during logout"
+        )
+
+@router.get("/test-smtp")
+async def test_smtp():
+    """Test SMTP connection."""
+    try:
+        result = await test_smtp_connection()
+        if result:
+            return {"message": "SMTP connection test successful"}
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail="SMTP connection test failed"
+            )
+    except Exception as e:
+        logger.error(f"SMTP test failed: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"SMTP test failed: {str(e)}"
         ) 
