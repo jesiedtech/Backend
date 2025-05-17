@@ -1,6 +1,7 @@
 import asyncpg
 import logging
 from app.core.config import settings
+from sqlalchemy import create_engine, text
 
 logger = logging.getLogger(__name__)
 
@@ -17,10 +18,11 @@ async def run_migrations():
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id UUID PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
+                first_name VARCHAR(255) NOT NULL,
+                last_name VARCHAR(255) NOT NULL,
                 email VARCHAR(255) UNIQUE NOT NULL,
                 hashed_password VARCHAR(255) NOT NULL,
-                role VARCHAR(50) NOT NULL,
+                role VARCHAR(50) NULL,
                 is_active BOOLEAN DEFAULT FALSE,
                 is_verified BOOLEAN DEFAULT FALSE,
                 verification_token VARCHAR(255),
@@ -50,3 +52,8 @@ async def run_migrations():
 if __name__ == "__main__":
     import asyncio
     asyncio.run(run_migrations())
+
+engine = create_engine(settings.DATABASE_URL)
+with engine.connect() as conn:
+    conn.execute(text("DROP SCHEMA public CASCADE; CREATE SCHEMA public;"))
+    conn.commit()

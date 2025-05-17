@@ -13,7 +13,7 @@ async def test_registration():
     user_data = {
         "email": "test@example.com",
         "first_name": "John",
-        "surname": "Doe",
+        "last_name": "Doe",
         "password": "Test123!@#"
     }
     

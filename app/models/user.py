@@ -13,11 +13,11 @@ class User:
     def __init__(
         self,
         id: str,
-        email: str,
         first_name: str,
-        surname: str,
+        last_name: str,
+        email: str,
         hashed_password: str,
-        role: str = 'user',
+        role: Optional[str] = None,
         is_active: bool = True,
         is_verified: bool = False,
         verification_token: Optional[str] = None,
@@ -25,12 +25,13 @@ class User:
         created_at: Optional[datetime] = None,
         updated_at: Optional[datetime] = None,
         last_login: Optional[datetime] = None,
-        last_logout: Optional[datetime] = None
+        last_logout: Optional[datetime] = None,
+        provider: Optional[str] = None
     ):
         self.id = id
-        self.email = email
         self.first_name = first_name
-        self.surname = surname
+        self.last_name = last_name
+        self.email = email
         self.hashed_password = hashed_password
         self.role = role
         self.is_active = is_active
@@ -41,32 +42,36 @@ class User:
         self.updated_at = updated_at or datetime.utcnow()
         self.last_login = last_login
         self.last_logout = last_logout
+        self.provider = provider
 
     @classmethod
-    async def create(cls, db: asyncpg.Connection, email: str, first_name: str, surname: str, password: str, role: str = 'user') -> 'User':
+    async def create(cls, db: asyncpg.Connection, email: str, first_name: str, last_name: str, password: str, role: str = 'user', provider: str = 'email') -> 'User':
         """Create a new user."""
         try:
             logger.info("Starting user creation process...")
             hashed_password = get_password_hash(password)
             verification_token = cls.generate_verification_token()
+            user_id = str(uuid.uuid4())  # Generate UUID for the id field
             
             query = """
-                INSERT INTO users (email, first_name, surname, hashed_password, role, verification_token)
-                VALUES ($1, $2, $3, $4, $5, $6)
-                RETURNING id, email, first_name, surname, hashed_password, role, is_active, is_verified,
-                         verification_token, reset_token, created_at, updated_at, last_login, last_logout
+                INSERT INTO users (id, email, first_name, last_name, hashed_password, role, verification_token, provider)
+                VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+                RETURNING id, email, first_name, last_name, hashed_password, role, is_active, is_verified,
+                         verification_token, reset_token, created_at, updated_at, last_login, last_logout, provider
             """
             
             logger.info("Executing database query...")
             try:
                 row = await db.fetchrow(
                     query,
+                    user_id,  # Use the generated UUID
                     email,
                     first_name,
-                    surname,
+                    last_name,
                     hashed_password,
                     role,
-                    verification_token
+                    verification_token,
+                    provider
                 )
                 logger.info("Database query executed successfully")
             except Exception as db_error:
@@ -82,7 +87,7 @@ class User:
                 id=row['id'],
                 email=row['email'],
                 first_name=row['first_name'],
-                surname=row['surname'],
+                last_name=row['last_name'],
                 hashed_password=row['hashed_password'],
                 role=row['role'],
                 is_active=row['is_active'],
@@ -92,7 +97,8 @@ class User:
                 created_at=row['created_at'],
                 updated_at=row['updated_at'],
                 last_login=row['last_login'],
-                last_logout=row['last_logout']
+                last_logout=row['last_logout'],
+                provider=row['provider']
             )
         except Exception as e:
             logger.error(f"Error creating user: {str(e)}", exc_info=True)
@@ -103,7 +109,7 @@ class User:
         """Get a user by email."""
         try:
             query = """
-                SELECT id, email, first_name, surname, hashed_password, role, is_active, is_verified,
+                SELECT id, first_name, last_name, email, hashed_password, role, is_active, is_verified,
                        verification_token, reset_token, created_at, updated_at, last_login, last_logout
                 FROM users
                 WHERE email = $1
@@ -113,9 +119,9 @@ class User:
             if row:
                 return cls(
                     id=row['id'],
-                    email=row['email'],
                     first_name=row['first_name'],
-                    surname=row['surname'],
+                    last_name=row['last_name'],
+                    email=row['email'],
                     hashed_password=row['hashed_password'],
                     role=row['role'],
                     is_active=row['is_active'],
@@ -137,7 +143,7 @@ class User:
         """Get a user by verification token."""
         try:
             query = """
-                SELECT id, email, first_name, surname, hashed_password, role, is_active, is_verified,
+                SELECT id, first_name, last_name, email, hashed_password, role, is_active, is_verified,
                        verification_token, reset_token, created_at, updated_at, last_login, last_logout
                 FROM users
                 WHERE verification_token = $1
@@ -147,9 +153,9 @@ class User:
             if row:
                 return cls(
                     id=row['id'],
-                    email=row['email'],
                     first_name=row['first_name'],
-                    surname=row['surname'],
+                    last_name=row['last_name'],
+                    email=row['email'],
                     hashed_password=row['hashed_password'],
                     role=row['role'],
                     is_active=row['is_active'],
@@ -171,7 +177,7 @@ class User:
         """Get a user by reset token."""
         try:
             query = """
-                SELECT id, email, first_name, surname, hashed_password, role, is_active, is_verified,
+                SELECT id, first_name, last_name, email, hashed_password, role, is_active, is_verified,
                        verification_token, reset_token, created_at, updated_at, last_login, last_logout
                 FROM users
                 WHERE reset_token = $1
@@ -181,9 +187,9 @@ class User:
             if row:
                 return cls(
                     id=row['id'],
-                    email=row['email'],
                     first_name=row['first_name'],
-                    surname=row['surname'],
+                    last_name=row['last_name'],
+                    email=row['email'],
                     hashed_password=row['hashed_password'],
                     role=row['role'],
                     is_active=row['is_active'],
@@ -201,11 +207,11 @@ class User:
             raise
 
     @classmethod
-    async def get_by_id(cls, db: asyncpg.Connection, user_id: UUID) -> Optional['User']:
+    async def get_by_id(cls, db: asyncpg.Connection, user_id: str) -> Optional['User']:
         """Get a user by ID."""
         try:
             query = """
-                SELECT id, email, first_name, surname, hashed_password, role, is_active, is_verified,
+                SELECT id, first_name, last_name, email, hashed_password, role, is_active, is_verified,
                        verification_token, reset_token, created_at, updated_at, last_login, last_logout
                 FROM users
                 WHERE id = $1
@@ -215,9 +221,9 @@ class User:
             if row:
                 return cls(
                     id=row['id'],
-                    email=row['email'],
                     first_name=row['first_name'],
-                    surname=row['surname'],
+                    last_name=row['last_name'],
+                    email=row['email'],
                     hashed_password=row['hashed_password'],
                     role=row['role'],
                     is_active=row['is_active'],
@@ -305,7 +311,7 @@ class User:
                 await conn.execute('''
                     UPDATE users 
                     SET first_name = $1,
-                        surname = $2,
+                        last_name = $2,
                         email = $3,
                         hashed_password = $4,
                         role = $5,
@@ -315,7 +321,7 @@ class User:
                         reset_token = $9,
                         updated_at = CURRENT_TIMESTAMP
                     WHERE id = $10
-                ''', self.first_name, self.surname, self.email, self.hashed_password,
+                ''', self.first_name, self.last_name, self.email, self.hashed_password,
                     self.role, self.is_active, self.is_verified,
                     self.verification_token, self.reset_token, self.id)
                 logger.info(f"User updated successfully with ID: {self.id}")
@@ -324,11 +330,11 @@ class User:
                 # Insert new user
                 await conn.execute('''
                     INSERT INTO users (
-                        id, first_name, surname, email, hashed_password, role,
+                        id, first_name, last_name, email, hashed_password, role,
                         is_active, is_verified, verification_token,
                         reset_token, created_at, updated_at
                     ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-                ''', self.id, self.first_name, self.surname, self.email, self.hashed_password, self.role,
+                ''', self.id, self.first_name, self.last_name, self.email, self.hashed_password, self.role,
                     self.is_active, self.is_verified, self.verification_token,
                     self.reset_token, self.created_at, self.updated_at)
                 logger.info(f"User created successfully with ID: {self.id}")

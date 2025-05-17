@@ -1,21 +1,15 @@
-import asyncio
-import asyncpg
+import os
+from sqlalchemy import create_engine
+from sqlalchemy.orm import sessionmaker
+from alembic import command
+from alembic.config import Config
 from app.core.config import settings
+from app.models.base import Base
 
-async def run_migration():
-    # Connect to the database
-    conn = await asyncpg.connect(settings.DATABASE_URL)
-    
-    try:
-        # Read and execute the migration file
-        with open('migrations/002_add_login_logout_tracking.sql', 'r') as f:
-            migration_sql = f.read()
-            await conn.execute(migration_sql)
-            print("Migration completed successfully!")
-    except Exception as e:
-        print(f"Error running migration: {str(e)}")
-    finally:
-        await conn.close()
+def run_migration():
+    # Only run Alembic migrations
+    alembic_cfg = Config("alembic.ini")
+    command.upgrade(alembic_cfg, "head")
 
 if __name__ == "__main__":
-    asyncio.run(run_migration()) 
+    run_migration() 

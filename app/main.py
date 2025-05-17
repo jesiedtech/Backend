@@ -1,9 +1,12 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import settings
 from app.api.v1.api import api_router
 from app.db.init_db import init_db
 import logging
+from fastapi.responses import JSONResponse
+from fastapi.exception_handlers import RequestValidationError
+from fastapi.exceptions import RequestValidationError
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,4 +40,20 @@ async def startup_event():
 
 @app.get("/")
 async def root():
-    return {"message": "Welcome to Jesi AI API"} 
+    return {"message": "Welcome to Jesi AI API"}
+
+@app.exception_handler(RequestValidationError)
+async def custom_validation_exception_handler(request: Request, exc: RequestValidationError):
+    # Check if the error is for password length
+    for error in exc.errors():
+        if (
+            error["loc"][-1] in ("password", "new_password")
+            and "Password must be at least 8 characters long" in error["msg"]
+        ):
+            return JSONResponse(
+                status_code=422,
+                content={"message": "Password must be at least 8 characters long"},
+            )
+    # Default behavior for other validation errors
+    from fastapi.exception_handlers import request_validation_exception_handler
+    return await request_validation_exception_handler(request, exc) 

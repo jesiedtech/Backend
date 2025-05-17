@@ -5,21 +5,17 @@ import re
 from uuid import UUID
 
 class UserBase(BaseModel):
-    email: EmailStr
     first_name: str
-    surname: str
-    role: str = 'user'
+    last_name: str
+    email: EmailStr
 
 class UserCreate(UserBase):
-    password: constr(min_length=8)
-    
+    password: str
+
     @validator('password')
     def password_strength(cls, v):
-        """Validate password strength."""
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters long')
-        if not (re.search(r'\d', v) or re.search(r'[!@#$%^&*(),.?":{}|<>]', v)):
-            raise ValueError('Password must contain at least one number or special character')
         return v
 
 class UserLogin(BaseModel):
@@ -45,15 +41,12 @@ class PasswordReset(BaseModel):
 
 class PasswordResetConfirm(BaseModel):
     token: str
-    new_password: constr(min_length=8)
-    
+    new_password: str
+
     @validator('new_password')
     def password_strength(cls, v):
-        """Validate password strength."""
         if len(v) < 8:
             raise ValueError('Password must be at least 8 characters long')
-        if not (re.search(r'\d', v) or re.search(r'[!@#$%^&*(),.?":{}|<>]', v)):
-            raise ValueError('Password must contain at least one number or special character')
         return v
 
 class Token(BaseModel):
@@ -71,4 +64,12 @@ class User(UserBase):
         from_attributes = True
         json_encoders = {
             UUID: str
-        } 
+        }
+
+class RoleAssignment(BaseModel):
+    user_id: UUID
+    role: str
+
+class GoogleAuth(BaseModel):
+    """Schema for Google authentication."""
+    token: str  # The Google OAuth token from the frontend 

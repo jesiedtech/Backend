@@ -2,10 +2,10 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, Background
 from fastapi.security import OAuth2PasswordBearer
 from sqlalchemy.orm import Session
 from app.core.security import get_password_hash, verify_password, create_access_token, generate_verification_token
-from app.core.email import send_verification_email, send_password_reset_email, send_email_background, send_email_async, test_smtp_connection
+from app.core.email import send_verification_email, send_password_reset_email, send_email_background, send_email_async
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserLogin, Token, UserVerify, PasswordReset, PasswordResetConfirm, UserResponse
+from app.schemas.user import UserCreate, UserLogin, Token, UserVerify, PasswordReset, PasswordResetConfirm, UserResponse, RoleAssignment, GoogleAuth
 from datetime import timedelta, datetime
 from app.core.config import settings
 import uuid
@@ -15,6 +15,9 @@ import logging
 from jose import JWTError, jwt
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+from google.oauth2 import id_token
+from google.auth.transport import requests
+import secrets
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -79,7 +82,7 @@ async def get_current_user_details(
             id=current_user.id,
             email=current_user.email,
             first_name=current_user.first_name,
-            surname=current_user.surname,
+            last_name=current_user.last_name,
             role=current_user.role,
             is_verified=current_user.is_verified,
             is_active=current_user.is_active
@@ -109,9 +112,9 @@ async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
                 db=db,
                 email=user.email,
                 first_name=user.first_name,
-                surname=user.surname,
+                last_name=user.last_name,
                 password=user.password,
-                role=user.role
+                provider='email'  # Set provider to 'email' for email registration
             )
             logger.info(f"User created successfully with ID: {new_user.id}")
         except Exception as create_error:
@@ -361,21 +364,138 @@ async def logout(
             detail="An error occurred during logout"
         )
 
-@router.get("/test-smtp")
-async def test_smtp():
-    """Test SMTP connection."""
+@router.post("/assign-role", response_model=UserResponse)
+async def assign_role(
+    role_data: RoleAssignment,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Assign a role to a user. Only admin users can assign roles."""
     try:
-        result = await test_smtp_connection()
-        if result:
-            return {"message": "SMTP connection test successful"}
-        else:
+        # Check if current user is admin
+        if current_user.role != 'admin':
             raise HTTPException(
-                status_code=500,
-                detail="SMTP connection test failed"
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Only admin users can assign roles"
             )
+        
+        # Get target user
+        target_user = await User.get_by_id(db, role_data.user_id)
+        if not target_user:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="User not found"
+            )
+        
+        # Update user role
+        target_user.role = role_data.role
+        await target_user.save(db)
+        
+        return UserResponse(
+            id=target_user.id,
+            email=target_user.email,
+            first_name=target_user.first_name,
+            last_name=target_user.last_name,
+            role=target_user.role,
+            is_verified=target_user.is_verified,
+            is_active=target_user.is_active
+        )
     except Exception as e:
-        logger.error(f"SMTP test failed: {str(e)}")
+        logger.error(f"Error assigning role: {str(e)}")
         raise HTTPException(
-            status_code=500,
-            detail=f"SMTP test failed: {str(e)}"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to assign role"
+        )
+
+@router.post("/google-auth", response_model=Token)
+async def google_auth(
+    google_data: GoogleAuth,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Authenticate or register a user using Google OAuth token.
+    """
+    try:
+        # Verify the Google token
+        try:
+            idinfo = id_token.verify_oauth2_token(
+                google_data.token,
+                requests.Request(),
+                settings.GOOGLE_CLIENT_ID
+            )
+            
+            if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid token issuer"
+                )
+            
+            # Get user info from the token
+            email = idinfo['email']
+            first_name = idinfo.get('given_name', '')
+            last_name = idinfo.get('family_name', '')
+            
+        except ValueError as e:
+            logger.error(f"Invalid Google token: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Google token"
+            )
+        
+        # Check if user exists
+        existing_user = await User.get_by_email(db, email)
+        
+        if existing_user:
+            # Update user's Google info if needed
+            if existing_user.provider != 'google':
+                existing_user.provider = 'google'
+                await existing_user.save(db)
+            
+            # Create access token
+            access_token = create_access_token(
+                data={"sub": str(existing_user.id)}
+            )
+            
+            return {
+                "access_token": access_token,
+                "token_type": "bearer"
+            }
+        
+        # Create new user
+        try:
+            # Generate a random password for Google users
+            random_password = secrets.token_urlsafe(32)
+            
+            new_user = await User.create(
+                db=db,
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+                password=random_password,
+                provider='google',
+                is_verified=True  # Google users are pre-verified
+            )
+            
+            # Create access token
+            access_token = create_access_token(
+                data={"sub": str(new_user.id)}
+            )
+            
+            return {
+                "access_token": access_token,
+                "token_type": "bearer"
+            }
+            
+        except Exception as create_error:
+            logger.error(f"Error creating Google user: {str(create_error)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user"
+            )
+            
+    except Exception as e:
+        logger.error(f"Google authentication error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication failed"
         ) 
