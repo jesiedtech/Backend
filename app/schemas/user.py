@@ -8,7 +8,6 @@ class UserBase(BaseModel):
     email: EmailStr
     first_name: str
     surname: str
-    role: Optional[str] = None
 
 class UserCreate(UserBase):
     password: constr(min_length=8)

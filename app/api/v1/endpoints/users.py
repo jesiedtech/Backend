@@ -103,15 +103,14 @@ async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
                 detail="Email already registered"
             )
         
-        # Create new user with default role
+        # Create new user
         try:
             new_user = await User.create(
                 db=db,
                 email=user.email,
                 first_name=user.first_name,
                 surname=user.surname,
-                password=user.password,
-                role='user'  # Set default role
+                password=user.password
             )
             logger.info(f"User created successfully with ID: {new_user.id}")
         except Exception as create_error:
