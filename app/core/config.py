@@ -3,9 +3,12 @@ from pydantic import Field
 from typing import Optional
 import logging
 import os
+from dotenv import load_dotenv
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+load_dotenv()
 
 class Settings(BaseSettings):
     PROJECT_NAME: str = "Jesi"
@@ -13,46 +16,22 @@ class Settings(BaseSettings):
     API_V1_STR: str = "/api/v1"
     
     # Database
-    DATABASE_URL: str = Field(
-        default="postgresql://postgres:password@localhost:5432/jesi",
-        description="Database connection URL"
-    )
+    DATABASE_URL: str = os.getenv("DATABASE_URL", "postgresql://postgres:password@localhost:5433/jesi")
     
     # JWT
-    SECRET_KEY: str = Field(
-        default="your-secret-key-here",
-        description="Secret key for JWT token generation"
-    )
-    ALGORITHM: str = Field(
-        default="HS256",
-        description="Algorithm for JWT token generation"
-    )
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = Field(
-        default=30,
-        description="Access token expiration time in minutes"
-    )
+    SECRET_KEY: str = os.getenv("SECRET_KEY", "your-secret-key")
+    ALGORITHM: str = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     
     # Email
     SMTP_TLS: bool = Field(
         default=True,
         description="Use TLS for SMTP connection"
     )
-    SMTP_PORT: int = Field(
-        default=587,
-        description="SMTP port"
-    )
-    SMTP_HOST: str = Field(
-        default="smtp.gmail.com",
-        description="SMTP host"
-    )
-    SMTP_USER: str = Field(
-        default="",
-        description="SMTP user email"
-    )
-    SMTP_PASSWORD: str = Field(
-        default="",
-        description="SMTP password"
-    )
+    SMTP_PORT: int = int(os.getenv("SMTP_PORT", "587"))
+    SMTP_HOST: str = os.getenv("SMTP_HOST", "")
+    SMTP_USER: str = os.getenv("SMTP_USER", "")
+    SMTP_PASSWORD: str = os.getenv("SMTP_PASSWORD", "")
     EMAILS_FROM_EMAIL: str = Field(
         default="",
         description="Email address to send from"
@@ -63,13 +42,10 @@ class Settings(BaseSettings):
     )
     
     # Frontend URL
-    FRONTEND_URL: str = Field(..., env="FRONTEND_URL")
+    FRONTEND_URL: str = os.getenv("FRONTEND_URL", "http://localhost:3000")
     
     # Google OAuth settings
-    GOOGLE_CLIENT_ID: Optional[str] = Field(
-        default=None,
-        description="Google OAuth client ID"
-    )
+    GOOGLE_CLIENT_ID: str = os.getenv("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET: Optional[str] = Field(
         default=None,
         description="Google OAuth client secret"

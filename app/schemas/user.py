@@ -68,4 +68,8 @@ class User(UserBase):
 
 class RoleAssignment(BaseModel):
     user_id: UUID
-    role: str 
+    role: str
+
+class GoogleAuth(BaseModel):
+    """Schema for Google authentication."""
+    token: str  # The Google OAuth token from the frontend 

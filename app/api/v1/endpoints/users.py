@@ -5,7 +5,7 @@ from app.core.security import get_password_hash, verify_password, create_access_
 from app.core.email import send_verification_email, send_password_reset_email, send_email_background, send_email_async
 from app.db.session import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserLogin, Token, UserVerify, PasswordReset, PasswordResetConfirm, UserResponse, RoleAssignment
+from app.schemas.user import UserCreate, UserLogin, Token, UserVerify, PasswordReset, PasswordResetConfirm, UserResponse, RoleAssignment, GoogleAuth
 from datetime import timedelta, datetime
 from app.core.config import settings
 import uuid
@@ -15,6 +15,9 @@ import logging
 from jose import JWTError, jwt
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+from google.oauth2 import id_token
+from google.auth.transport import requests
+import secrets
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -402,4 +405,97 @@ async def assign_role(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to assign role"
+        )
+
+@router.post("/google-auth", response_model=Token)
+async def google_auth(
+    google_data: GoogleAuth,
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Authenticate or register a user using Google OAuth token.
+    """
+    try:
+        # Verify the Google token
+        try:
+            idinfo = id_token.verify_oauth2_token(
+                google_data.token,
+                requests.Request(),
+                settings.GOOGLE_CLIENT_ID
+            )
+            
+            if idinfo['iss'] not in ['accounts.google.com', 'https://accounts.google.com']:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid token issuer"
+                )
+            
+            # Get user info from the token
+            email = idinfo['email']
+            first_name = idinfo.get('given_name', '')
+            last_name = idinfo.get('family_name', '')
+            
+        except ValueError as e:
+            logger.error(f"Invalid Google token: {str(e)}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid Google token"
+            )
+        
+        # Check if user exists
+        existing_user = await User.get_by_email(db, email)
+        
+        if existing_user:
+            # Update user's Google info if needed
+            if existing_user.provider != 'google':
+                existing_user.provider = 'google'
+                await existing_user.save(db)
+            
+            # Create access token
+            access_token = create_access_token(
+                data={"sub": str(existing_user.id)}
+            )
+            
+            return {
+                "access_token": access_token,
+                "token_type": "bearer"
+            }
+        
+        # Create new user
+        try:
+            # Generate a random password for Google users
+            random_password = secrets.token_urlsafe(32)
+            
+            new_user = await User.create(
+                db=db,
+                email=email,
+                first_name=first_name,
+                last_name=last_name,
+                password=random_password,
+                provider='google',
+                is_verified=True  # Google users are pre-verified
+            )
+            
+            # Create access token
+            access_token = create_access_token(
+                data={"sub": str(new_user.id)}
+            )
+            
+            return {
+                "access_token": access_token,
+                "token_type": "bearer"
+            }
+            
+        except Exception as create_error:
+            logger.error(f"Error creating Google user: {str(create_error)}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to create user"
+            )
+            
+    except Exception as e:
+        logger.error(f"Google authentication error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Authentication failed"
         ) 
