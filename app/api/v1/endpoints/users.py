@@ -79,7 +79,7 @@ async def get_current_user_details(
             id=current_user.id,
             email=current_user.email,
             first_name=current_user.first_name,
-            surname=current_user.surname,
+            last_name=current_user.last_name,
             role=current_user.role,
             is_verified=current_user.is_verified,
             is_active=current_user.is_active
@@ -109,8 +109,9 @@ async def register_user(user: UserCreate, db: AsyncSession = Depends(get_db)):
                 db=db,
                 email=user.email,
                 first_name=user.first_name,
-                surname=user.surname,
-                password=user.password
+                last_name=user.last_name,
+                password=user.password,
+                provider='email'  # Set provider to 'email' for email registration
             )
             logger.info(f"User created successfully with ID: {new_user.id}")
         except Exception as create_error:
@@ -391,7 +392,7 @@ async def assign_role(
             id=target_user.id,
             email=target_user.email,
             first_name=target_user.first_name,
-            surname=target_user.surname,
+            last_name=target_user.last_name,
             role=target_user.role,
             is_verified=target_user.is_verified,
             is_active=target_user.is_active

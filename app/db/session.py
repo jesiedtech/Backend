@@ -33,10 +33,11 @@ async def init_db():
         await conn.execute('''
             CREATE TABLE IF NOT EXISTS users (
                 id UUID PRIMARY KEY,
-                name VARCHAR(255) NOT NULL,
+                first_name VARCHAR(255) NOT NULL,
+                last_name VARCHAR(255) NOT NULL,
                 email VARCHAR(255) UNIQUE NOT NULL,
                 hashed_password VARCHAR(255) NOT NULL,
-                role VARCHAR(50) NOT NULL DEFAULT 'user',
+                role VARCHAR(50) NULL,
                 is_active BOOLEAN DEFAULT FALSE,
                 is_verified BOOLEAN DEFAULT FALSE,
                 verification_token VARCHAR(255),

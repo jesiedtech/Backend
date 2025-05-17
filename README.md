@@ -41,3 +41,6 @@ The API will be available at http://localhost:8000
 API documentation will be available at http://localhost:8000/docs 
 
 python -m app.db.migrations.run_migration
+
+python drop_all_tables.py
+python run_migration.py
